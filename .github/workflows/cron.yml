@@ -1,1 +1,37 @@
-#
+name: Reminder Bot
+
+on:
+  workflow_dispatch:  # Allow manual triggering of the workflow
+
+jobs:
+  calculate-next-cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install Dependencies
+        run: pip install requests
+
+      - name: Calculate Next Cron
+        id: calculate_cron
+        run: |
+          python reminder_bot.py > next_cron.txt
+          cat next_cron.txt
+          echo "::set-output name=cron::$(cat next_cron.txt)"
+
+  update-schedule:
+    needs: calculate-next-cron
+    runs-on: ubuntu-latest
+    if: ${{ needs.calculate-next-cron.outputs.cron != '' }}
+    steps:
+      - name: Update Workflow Cron
+        run: |
+          next_cron="${{ needs.calculate-next-cron.outputs.cron }}"
+          echo "Updating workflow cron to: $next_cron"
+          sed -i "s|cron: .*|cron: \"$next_cron\"|g" .github/workflows/main.yml

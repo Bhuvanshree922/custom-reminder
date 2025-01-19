@@ -1,0 +1,7 @@
+every_minute - - Log activity
+every_hour - - Sync files
+everyday - 9 AM - Read Medium Articles
+one_time - 11 AM - Finish the A task
+wed - 2 PM - Meeting with CEO
+sat_recurr - 10 AM - Start the course
+sun_recurr - 11 AM - Start practical learning
