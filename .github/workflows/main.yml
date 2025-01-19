@@ -1,6 +1,8 @@
 name: Reminder Bot
 
 on:
+  schedule:
+    - cron: "0 0 * * *"  # Default placeholder cron value
   workflow_dispatch:  # Allow manual triggering of the workflow
 
 jobs:
@@ -30,8 +32,19 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ needs.calculate-next-cron.outputs.cron != '' }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Update Workflow Cron
         run: |
           next_cron="${{ needs.calculate-next-cron.outputs.cron }}"
           echo "Updating workflow cron to: $next_cron"
           sed -i "s|cron: .*|cron: \"$next_cron\"|g" .github/workflows/main.yml
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add .github/workflows/main.yml
+          git commit -m "Update cron schedule to $next_cron"
+          git push
