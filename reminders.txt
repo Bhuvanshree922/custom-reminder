@@ -4,3 +4,4 @@ one_time - 11 AM - Finish the A task
 wed - 2 PM - Meeting with CEO
 sat_recur - 10 AM - Start the course
 sun_recur - 11 AM - Start practical learning
+sat_recur - 4 PM - weekly syncup
