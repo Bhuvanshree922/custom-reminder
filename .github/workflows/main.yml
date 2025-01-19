@@ -1,50 +1,35 @@
-name: Reminder Bot
-
+name: Reminder Notifications
+ 
 on:
   schedule:
-    - cron: "0 0 * * *"  # Default placeholder cron value
-  workflow_dispatch:  # Allow manual triggering of the workflow
-
+    - cron: '* * * * *'  
+    
+ 
 jobs:
-  calculate-next-cron:
+  reminder-job:
     runs-on: ubuntu-latest
+ 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
+      - name: Checkout the repo
+        uses: actions/checkout@v2
+ 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v2
         with:
-          python-version: "3.x"
-
-      - name: Install Dependencies
-        run: pip install requests
-
-      - name: Calculate Next Cron
-        id: calculate_cron
+          python-version: '3.9'
+ 
+      - name: Install dependencies
         run: |
-          python reminder_bot.py > next_cron.txt
-          cat next_cron.txt
-          echo "::set-output name=cron::$(cat next_cron.txt)"
-
-  update-schedule:
-    needs: calculate-next-cron
-    runs-on: ubuntu-latest
-    if: ${{ needs.calculate-next-cron.outputs.cron != '' }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Update Workflow Cron
+          python -m pip install --upgrade pip
+          pip install pytz python-telegram-bot
+ 
+      - name: Run the reminder script
+        run: python reminder_bot.py
+ 
+      - name: Commit the updated cron expressions
         run: |
-          next_cron="${{ needs.calculate-next-cron.outputs.cron }}"
-          echo "Updating workflow cron to: $next_cron"
-          sed -i "s|cron: .*|cron: \"$next_cron\"|g" .github/workflows/main.yml
-
-      - name: Commit and Push Changes
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add .github/workflows/main.yml
-          git commit -m "Update cron schedule to $next_cron"
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add cron_schedule.txt
+          git commit -m "Update cron expressions"
           git push
