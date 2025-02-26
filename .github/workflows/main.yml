@@ -1,40 +1,30 @@
 name: Reminder Notifications
- 
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'  
-    
- 
+    - cron: '*/5 * * * *' # Permanent cron
+
 jobs:
   reminder-job:
     runs-on: ubuntu-latest
- 
+
     steps:
       - name: Checkout the repo
         uses: actions/checkout@v2
- 
+
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
           python-version: '3.9'
- 
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytz pyTelegramBotAPI
- 
+          pip install pytz pyTelegramBotAPI pyyaml
+
       - name: Run the reminder script
         env:
-         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python reminder_bot.py
- 
-      - name: Commit the updated cron expressions
-        
-        run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add cron_schedule.txt
-          git commit -m "Update cron expressions"
-          git push
