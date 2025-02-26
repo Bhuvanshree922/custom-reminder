@@ -48,22 +48,28 @@ def update_cron_files(reminders):
 
 def update_github_actions():
     with open(GITHUB_ACTIONS_FILE, "r") as file:
-        workflow = yaml.safe_load(file)
-    
+        workflow = yaml.safe_load(file) or {}
+
+    if 'on' not in workflow:
+        workflow['on'] = {}
+    if 'schedule' not in workflow['on']:
+        workflow['on']['schedule'] = []
+
     with open(ONE_TIME_CRON_FILE, "r") as one_time, open(RECURRING_CRON_FILE, "r") as recurring:
         one_time_crons = [line.split(" = ")[0] for line in one_time.readlines()]
         recurring_crons = [line.split(" = ")[0] for line in recurring.readlines()]
-    
+
     workflow['on']['schedule'] = [{'cron': '*/5 * * * *'}] + [{'cron': cron} for cron in one_time_crons + recurring_crons]
-    
+
     with open(GITHUB_ACTIONS_FILE, "w") as file:
         yaml.dump(workflow, file, default_flow_style=False)
-    
+
     os.system("git config --global user.name 'GitHub Actions'")
     os.system("git config --global user.email 'actions@github.com'")
-    os.system("git add .")
+    os.system("git add .github/workflows/main.yml")
     os.system("git commit -m 'Update GitHub Actions cron schedule'")
     os.system("git push")
+
 
 def remove_executed_crons():
     open(ONE_TIME_CRON_FILE, "w").close()
