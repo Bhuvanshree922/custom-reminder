@@ -1,13 +1,15 @@
 import datetime
 import os
 import pytz
+import yaml
 from telebot import TeleBot
 
+# Constants
 tz = pytz.timezone("Asia/Kolkata")
 REMINDER_FILE = "reminders.txt"
 ONE_TIME_CRON_FILE = "one_time_cron_schedule.txt"
 RECURRING_CRON_FILE = "recurring_cron_schedule.txt"
-GITHUB_ACTIONS_FILE = ".github/workflows/reminder.yml"
+GITHUB_ACTIONS_FILE = ".github/workflows/main.yml"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -45,44 +47,21 @@ def update_cron_files(reminders):
         file.write("\n".join(recurring_entries))
 
 def update_github_actions():
-    with open(ONE_TIME_CRON_FILE, "r") as one_time, open(RECURRING_CRON_FILE, "r") as recurring:
-        one_time_crons = one_time.readlines()
-        recurring_crons = recurring.readlines()
+    with open(GITHUB_ACTIONS_FILE, "r") as file:
+        workflow = yaml.safe_load(file)
     
-    cron_schedules = "\n".join([f"    - cron: '{line.split(' = ')[0]}'" for line in one_time_crons + recurring_crons])
-    workflow_content = f"""
-name: Reminder Notifications
-on:
-  workflow_dispatch:
-  schedule:
-{cron_schedules}
-
-jobs:
-  reminder-job:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout the repo
-        uses: actions/checkout@v2
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytz pyTelegramBotAPI
-      - name: Run the reminder script
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python reminder_bot.py
-    """
+    with open(ONE_TIME_CRON_FILE, "r") as one_time, open(RECURRING_CRON_FILE, "r") as recurring:
+        one_time_crons = [line.split(" = ")[0] for line in one_time.readlines()]
+        recurring_crons = [line.split(" = ")[0] for line in recurring.readlines()]
+    
+    workflow['on']['schedule'] = [{'cron': '*/5 * * * *'}] + [{'cron': cron} for cron in one_time_crons + recurring_crons]
+    
     with open(GITHUB_ACTIONS_FILE, "w") as file:
-        file.write(workflow_content)
+        yaml.dump(workflow, file, default_flow_style=False)
     
     os.system("git config --global user.name 'GitHub Actions'")
     os.system("git config --global user.email 'actions@github.com'")
-    os.system("git add .github/workflows/reminder.yml")
+    os.system("git add .")
     os.system("git commit -m 'Update GitHub Actions cron schedule'")
     os.system("git push")
 
