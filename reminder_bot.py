@@ -3,130 +3,97 @@ import os
 import pytz
 from telebot import TeleBot
 
-# Constants
+tz = pytz.timezone("Asia/Kolkata")
 REMINDER_FILE = "reminders.txt"
-CRON_FILE = "cron_schedule.txt"
-TRACKED_DAYS_FILE = "tracked_days.txt"
+ONE_TIME_CRON_FILE = "one_time_cron_schedule.txt"
+RECURRING_CRON_FILE = "recurring_cron_schedule.txt"
+GITHUB_ACTIONS_FILE = ".github/workflows/reminder.yml"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # Replace with the recipient's chat ID
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Set the timezone (replace with your desired timezone)
-timezone = pytz.timezone("Asia/Kolkata")
-
-# Initialize the Telegram bot
 bot = TeleBot(TELEGRAM_TOKEN)
 
-
 def load_reminders():
-    """Load reminders from the reminders file."""
     with open(REMINDER_FILE, "r") as file:
         return file.readlines()
 
-
-def send_telegram_message(message):
-    """Send a message to the specified Telegram chat."""
-    bot.send_message(CHAT_ID, message)
-
-
-def get_current_time():
-    """Get the current time in the configured timezone."""
-    return datetime.datetime.now(timezone)
-
-
 def get_cron_expression(reminder_type, time_str=None):
-    """
-    Converts a reminder type and time into a cron expression.
-    """
-    if reminder_type == "every_minute":
-        return "* * * * *"
     if reminder_type == "every_hour":
         return "0 * * * *"
-
     if time_str:
-        time_obj = datetime.datetime.strptime(time_str, "%I %p").replace(tzinfo=timezone)
-        minute = time_obj.minute
-        hour = time_obj.hour
-
-        if "recur" in reminder_type:
-            day_abbreviation = reminder_type.split("_")[0].upper()  # e.g., "SUN" for "sun_recur"
-            return f"{minute} {hour} * * {day_abbreviation}"
-        return f"{minute} {hour} * * *"
+        time_obj = datetime.datetime.strptime(time_str, "%I %p").replace(tzinfo=tz)
+        return f"{time_obj.minute} {time_obj.hour} * * {reminder_type.split('_')[0].upper()}" if "recur" in reminder_type else f"{time_obj.minute} {time_obj.hour} * * *"
     return None
 
+def update_cron_files(reminders):
+    one_time_entries, recurring_entries = [], []
+    for reminder in reminders:
+        parts = reminder.strip().split(" - ")
+        if len(parts) < 3:
+            continue
+        reminder_type, time_str, message = parts[0], parts[1], parts[2]
+        cron_expr = get_cron_expression(reminder_type, time_str)
+        if cron_expr:
+            if "one_time" in reminder_type:
+                one_time_entries.append(f"{cron_expr} = {message}")
+            else:
+                recurring_entries.append(f"{cron_expr} = {message}")
+    
+    with open(ONE_TIME_CRON_FILE, "w") as file:
+        file.write("\n".join(one_time_entries))
+    with open(RECURRING_CRON_FILE, "w") as file:
+        file.write("\n".join(recurring_entries))
 
-def should_execute_reminder(reminder, current_time):
-    """Check if the reminder should execute based on the current time."""
-    reminder_parts = reminder.strip().split(" - ")
-    reminder_type = reminder_parts[0]
-    time_str = reminder_parts[1] if len(reminder_parts) > 1 else None
+def update_github_actions():
+    with open(ONE_TIME_CRON_FILE, "r") as one_time, open(RECURRING_CRON_FILE, "r") as recurring:
+        one_time_crons = one_time.readlines()
+        recurring_crons = recurring.readlines()
+    
+    cron_schedules = "\n".join([f"    - cron: '{line.split(' = ')[0]}'" for line in one_time_crons + recurring_crons])
+    workflow_content = f"""
+name: Reminder Notifications
+on:
+  workflow_dispatch:
+  schedule:
+{cron_schedules}
 
-    if reminder_type == "every_minute":
-        return True  # Run every minute
+jobs:
+  reminder-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repo
+        uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytz pyTelegramBotAPI
+      - name: Run the reminder script
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python reminder_bot.py
+    """
+    with open(GITHUB_ACTIONS_FILE, "w") as file:
+        file.write(workflow_content)
+    
+    os.system("git config --global user.name 'GitHub Actions'")
+    os.system("git config --global user.email 'actions@github.com'")
+    os.system("git add .github/workflows/reminder.yml")
+    os.system("git commit -m 'Update GitHub Actions cron schedule'")
+    os.system("git push")
 
-    if reminder_type == "every_hour" and current_time.minute == 0:
-        return True  # Run at the top of every hour
-
-    if reminder_type == "everyday" and time_str:
-        reminder_time = datetime.datetime.strptime(time_str, "%I %p").time()
-        return current_time.time().hour == reminder_time.hour and current_time.time().minute == reminder_time.minute
-
-    if reminder_type == "one_time" and time_str:
-        reminder_time = datetime.datetime.strptime(time_str, "%I %p").time()
-        return current_time.time().hour == reminder_time.hour and current_time.time().minute == reminder_time.minute
-
-    if reminder_type in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] and time_str:
-        day_name = current_time.strftime("%a").lower()
-        if reminder_type.startswith(day_name):
-            reminder_time = datetime.datetime.strptime(time_str, "%I %p").time()
-            return current_time.time().hour == reminder_time.hour and current_time.time().minute == reminder_time.minute
-
-    if "recur" in reminder_type and time_str:
-        day_name = reminder_type.split("_")[0]
-        if day_name.startswith(current_time.strftime("%a").lower()):
-            reminder_time = datetime.datetime.strptime(time_str, "%I %p").time()
-            return current_time.time().hour == reminder_time.hour and current_time.time().minute == reminder_time.minute
-
-    return False
-
-
-def update_files(reminders, executed_reminders, cron_expressions):
-    """Update reminders and cron schedule files."""
-    # Update reminders.txt by removing executed reminders
-    with open(REMINDER_FILE, "w") as file:
-        file.writelines([r for r in reminders if r not in executed_reminders])
-
-    # Update cron_schedule.txt with new cron expressions
-    with open(CRON_FILE, "w") as file:
-        for cron in cron_expressions:
-            file.write(f"{cron}\n")
-
+def remove_executed_crons():
+    open(ONE_TIME_CRON_FILE, "w").close()
 
 def main():
     reminders = load_reminders()
-    executed_reminders = []
-    cron_expressions = []
-    current_time = get_current_time()
-
-    for reminder in reminders:
-        reminder_parts = reminder.strip().split(" - ")
-        reminder_type = reminder_parts[0]
-        time_str = reminder_parts[1] if len(reminder_parts) > 1 else None
-        message = reminder_parts[-1] if len(reminder_parts) > 2 else "Reminder!"
-
-        if should_execute_reminder(reminder, current_time):
-            send_telegram_message(message)
-            if "one_time" in reminder or "recur" not in reminder:
-                executed_reminders.append(reminder)
-
-        # Generate cron expressions for recurring reminders
-        if "recur" in reminder or reminder_type in ["every_minute", "every_hour", "everyday"]:
-            cron_expr = get_cron_expression(reminder_type, time_str)
-            if cron_expr:
-                cron_expressions.append(cron_expr)
-
-    # Update files to reflect the changes
-    update_files(reminders, executed_reminders, cron_expressions)
-
+    update_cron_files(reminders)
+    update_github_actions()
+    remove_executed_crons()
 
 if __name__ == "__main__":
     main()
